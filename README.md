@@ -30,4 +30,4 @@ The code was made with reference to the pytorch site.
 
 The BlackBox.py file is about the blackbox attack.
 * paper : Practical Black-Box Attacks against Machine Learning (https://arxiv.org/abs/1602.02697)
-* It doesn't contain Papernot et al. algorithm in my code just FGSM.
+* It doesn't contain Papernot et al. algorithm in my code, just FGSM.
