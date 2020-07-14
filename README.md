@@ -28,5 +28,6 @@ The code was made with reference to the pytorch site.
   adversarial attack : https://tutorials.pytorch.kr/beginner/fgsm_tutorial.html
   cnn classification : https://tutorials.pytorch.kr/beginner/blitz/cifar10_tutorial.html#sphx-glr-beginner-blitz-cifar10-tutorial-py
 
-The BlackBox.py file is about the blacbox attack.
+The BlackBox.py file is about the blackbox attack.
 * paper : Practical Black-Box Attacks against Machine Learning (https://arxiv.org/abs/1602.02697)
+* It doesn't contain Papernot et al. algorithm in my code just FGSM.
