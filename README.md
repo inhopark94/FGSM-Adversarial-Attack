@@ -6,17 +6,21 @@ Main content is attack, defense will be uploaded soon
 python version 3.7.5
 
 
-make a new anaconda enviroment : conda create -n name python=3.7.5
-pytorch, torchvision, cudatoolkit download : conda install pytorch torchvision cudatoolkit=10.2 -c pytorch (pytorch hompage explains details)
+* make a new anaconda enviroment
+conda create -n name python=3.7.5
 
-matplotlib : conda install matplotlib
+* pytorch, torchvision, cudatoolkit download : 
+conda install pytorch torchvision cudatoolkit=10.2 -c pytorch (pytorch hompage explains details)
+
+* matplotlib
+conda install matplotlib
 
 you can write the code in the directory where you download the file.
 
 python WhiteBox.py
 python BlackBox.py
 
-The WhiteBox.py file is about the fgsm attack which is very famous.
+The WhiteBox.py file is about the fgsm attack.
 The code was made with reference to the pytorch site.
 * paper : Explaining and harnessing adversarial examples.(https://arxiv.org/abs/1412.6572)
 * pytorch site
