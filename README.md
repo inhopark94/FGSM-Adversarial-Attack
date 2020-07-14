@@ -6,13 +6,13 @@ Main content is attack, defense will be uploaded soon
 python version 3.7.5
 
 
-* make a new anaconda enviroment
+* make a new anaconda enviroment : 
 conda create -n name python=3.7.5
 
 * pytorch, torchvision, cudatoolkit download : 
 conda install pytorch torchvision cudatoolkit=10.2 -c pytorch (pytorch hompage explains details)
 
-* matplotlib
+* matplotlib : 
 conda install matplotlib
 
 you can write the code in the directory where you download the file.
