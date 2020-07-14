@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Jul 11 22:10:54 2020
+
+reference paper : Practical Black-Box Attacks against Machine Learning
+arXiv:1602.02697v4 [cs.CR] 19 Mar 2017
+
+@author: ihpark
+"""
+
+from __future__ import print_function ## ??
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torchvision import datasets, transforms
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+from torch.autograd import Variable
+
+
+# parameters of the network
+netB_train_num = 150 # the number of training data for the F network
+epsilon = 0.3 # data sensitivity for adversarial attack
+lamb = 0.1 # data augumentation step size
+num = netB_train_num + 1 # New dictionary's key count
+epoch_num = 60 # total epoch. the count will be a (substitute epoch*iteration epoch). 
+tau = 1 # lamda change period
+train_flag = 1 # if you want to train the F network, set the value 1
+
+
+# After sigma epoch, the number of augmentation data will reduce through k_num
+sigma = 3 
+k_num = 400 
+
+
+# Reset model's parameters after a subsitute epoch
+# If you want to know about subsitute epoch, need to see a related paper
+def weight_reset(m):
+    if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+        m.reset_parameters()
+        # isinstance(m,nn.Conv2d) : whether instance exist 
+    
+
+# FGSM attack 
+def fgsm_attack(image, epsilon, data_grad):
+    sign_data_grad = data_grad.sign()
+    perturbed_image = image + epsilon*sign_data_grad
+    perturbed_image = torch.clamp(perturbed_image, 0, 1)
+    return perturbed_image
+
+# After the sigma epoch, the number of increasing augmentation data will be decreased. 
+# This function reflect the k_num, lou, sigma. 
+def sampling_func(lou, sigma,  k_num, Dict_len):
+    N = int(round(k_num*(lou-sigma)))
+    A_list = list(range(1,Dict_len+1))
+    index = np.random.choice(A_list, N,replace = 0)
+    return index
+
+# Reference network called 'oracle' in the black box adversarial attack paper
+class Net_A(nn.Module):
+    def __init__(self):
+        super(Net_A, self).__init__()
+        self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
+        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
+        self.conv2_drop = nn.Dropout2d()
+        self.fc1 = nn.Linear(320, 50)
+        self.fc2 = nn.Linear(50, 10)
+
+    def forward(self, x):
+        x = F.relu(F.max_pool2d(self.conv1(x), 2))
+        x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
+        x = x.view(-1, 320)
+        x = F.relu(self.fc1(x))
+        x = F.dropout(x, training=self.training)
+        x = self.fc2(x)
+        return F.log_softmax(x, dim=1)
+
+
+# This is a F network which  trains the oracle's output O(x')
+class Net_B(nn.Module):
+    def __init__(self):
+        super(Net_B, self).__init__()
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=3,padding = 1)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding = 1)
+        self.fc1 = nn.Linear(7*7*64,200)
+        self.fc2 = nn.Linear(200,10)
+
+    def forward(self, x):
+        x = F.relu(F.max_pool2d(self.conv1(x), 2))
+        x = F.relu(F.max_pool2d(self.conv2(x), 2))
+        x = x.view(-1, 7*7*64)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        
+        return F.log_softmax(x, dim=1)
+
+
+# Path where you want to download MNIST data.    
+PATH = '../data/MNIST_net.pth'
+
+
+use_cuda=True
+
+# training loader from MNIST data :  it contains two type of data, one is about image data and  another is image labels.
+train_loader = torch.utils.data.DataLoader(
+    datasets.MNIST('../data', train=True, download=True, transform=transforms.Compose([
+            transforms.ToTensor(),
+            ])),
+        batch_size=16, shuffle=True)
+
+
+
+net_A = Net_A()
+net_B = Net_B()
+criterion = nn.CrossEntropyLoss()
+optimizer_net_A = optim.SGD(net_A.parameters(), lr=0.001, momentum = 0.9)
+optimizer_net_B = optim.SGD(net_B.parameters(), lr=0.001, momentum = 0.9)
+
+print("CUDA Available: ",torch.cuda.is_available())
+device = torch.device("cuda" if (use_cuda and torch.cuda.is_available()) else "cpu")
+model_A = net_A.to(device)
+model_B = net_B.to(device)
+
+
+
+# Oracle train
+if not os.path.isfile('../data/MNIST_net.pth') :
+    for epoch in range(50):
+        running_loss = 0.0
+        for i, data in enumerate(train_loader, 0):
+            inputs, labels = data
+            inputs, labels= inputs.to(device), labels.to(device)
+            optimizer_net_A.zero_grad()
+            outputs = net_A(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer_net_A.step()
+            running_loss += loss.item()
+            if i % 2000 == 1999:
+                print('[%d, %5d] loss: %.3f' %
+                      (epoch + 1, i + 1, running_loss / 2000))
+                running_loss = 0.0
+    print('Finished Training base network')
+    torch.save(net_A.state_dict(),PATH)
+
+
+print('load pretrained base network_A data ')
+
+# The model_A must be in evaluation mode.
+model_A.load_state_dict(torch.load(PATH, map_location='cpu'))
+
+
+# This code set two Dictionary file. there are data, label Dictionaries to train the network F.
+Data_Dict = {}
+Label_Dict = {}
+
+
+#  Test_loader for learning the network F.
+test_loader = torch.utils.data.DataLoader(
+  datasets.MNIST('../data', train=False, download=True, transform=transforms.Compose([
+          transforms.ToTensor(),
+          ])),
+      batch_size=1, shuffle=False)
+
+# For augmentation, the data is devided to two dictionary
+for i, data in enumerate(test_loader, 0):
+    inputs, labels = data
+    inputs, labels= inputs.to(device), labels.to(device)
+    j = i +1
+    Data_Dict[j] = inputs
+    Label_Dict[j] = labels
+    if j == netB_train_num:
+        break
+
+# Train the network F     
+if train_flag :
+    for epoch in range(epoch_num):
+        Aug_Dict = {}
+        y_dict = {}
+        running_loss = 0.0
+        lou = int((epoch + 10)/10)
+        if lou >= sigma :
+            sampling_list = sampling_func(lou, sigma, k_num, len(Data_Dict))
+        # after sigma substitute epoch, the number of augmentation is changed.
+        
+        for k in Data_Dict.keys():
+            data_change = 0
+            y_A = model_A(Data_Dict[k].data.detach())
+            y_A = y_A.max(1)[1] 
+            data = Variable(Data_Dict[k],requires_grad = True)
+            optimizer_net_B.zero_grad() 
+            outputs = model_B(data)
+            loss = F.nll_loss(outputs, y_A)
+            loss.backward()
+            optimizer_net_B.step()
+            if lou >= sigma :
+                data_change = k in sampling_list
+            if epoch%10 == 9 :
+                if lou >= sigma and data_change:
+                    data_grad = data.grad.data
+                    perturbed_data = fgsm_attack(data, lamb*(-1)**int(epoch/(tau*10)), data_grad)
+                    Aug_Dict[num] =perturbed_data.clone()
+                    num += 1
+                elif lou < sigma:    
+                    data_grad = data.grad.data
+                    perturbed_data = fgsm_attack(data, lamb*(-1)**int(epoch/(tau*10)), data_grad)
+                    Aug_Dict[num] =perturbed_data.clone()
+                    num += 1
+            if epoch%10 == 0:         
+                model_B.apply(weight_reset)    
+            running_loss += loss.item()     
+            
+        print(epoch + 1,  running_loss /float(len(Data_Dict)))
+        print('Data_Dict length : ', len(Data_Dict))    
+        Data_Dict.update(Aug_Dict)
+    torch.save(net_B.state_dict(),'../data/net_B.pth')
+    print('Finished Training network_B for black box adversarial attack ')
+
+model_B.load_state_dict(torch.load('../data/net_B.pth', map_location='cpu'))
+print('load pretrained based network_B data')
+
+
+
+# test for the result which is compared  O(x') with real labels.
+def test(model_A, model_B, device, test_loader, epsilon, test_set_check_count):
+    count = 0
+    sumA = 0
+    sumB = 0
+    correct = 0
+    trans = 0
+    model_A.eval()
+    
+    for  i, data in enumerate(test_loader, 0):
+        if not i < test_set_check_count:
+             inputs, labels = data
+             inputs, labels= inputs.to(device), labels.to(device) 
+             inputs.requires_grad = True
+             output = model_B(inputs)
+             loss = F.nll_loss(output, labels)
+             model_B.zero_grad()
+             loss.backward()
+             inputs_grad = inputs.grad.data
+             perturbed_data = fgsm_attack(inputs, epsilon, inputs_grad)
+             output = model_A(perturbed_data)
+             final_pred = output.max(1, keepdim=True)[1] 
+             if final_pred.item() == labels.item():
+                 correct += 1 
+             if i == 160:
+                 view = perturbed_data.to('cpu').detach()
+                 plt.imshow(view[0,0,:,:],cmap = 'gray')
+    model_B.eval()
+    for i, data in enumerate(test_loader, 0):
+        if not i < test_set_check_count:
+            inputs, labels = data
+            inputs, labels= inputs.to(device), labels.to(device)     
+            count +=1 
+            result_vecA = model_A(inputs)
+            y_A = result_vecA.max(1)[1] 
+            if y_A.data == labels.data:
+                sumA += 1 
+            
+            result_vecB = model_B(inputs)
+            y_B = result_vecB.max(1)[1] 
+            if y_B.data == labels.data:
+                sumB += 1
+            if y_B.data == y_A.data:
+                trans += 1 
+    print('eps : ', epsilon)            
+    print('accuracy model A : ', sumA/count)            
+    print('accuracy  model B : ', sumB/count)
+    print('accuracy model, A = B : ', trans/count)
+    print('missclassification transferability B to A : ', 1 - correct/count)
+
+test_set_check_count = 0
+test(model_A,model_B, device, test_loader, epsilon,test_set_check_count)
+
+
+
+
