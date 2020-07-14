@@ -1,4 +1,4 @@
-# FGSM adversarial attach for both of white and black box adversarial attack.
+# FGSM adversarial attack for both of white and black box attack.
 
 This is about the adversarial attack and defense
 Main content is attack, defense will be uploaded soon
