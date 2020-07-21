@@ -19,7 +19,7 @@ you can write the code in the anaconda evironment directory where you download t
 and when you use a New_BlackBox.py code, need to change PATH_Result, PATH_Oracle to your directory.
 
 PATH_Result is a perturbed image download directory.
-PATH_Oracle containt both of oracle file directory and its .pth file name.
+PATH_Oracle contains both of oracle file directory and .pth file name.
 
 
 python WhiteBox.py
