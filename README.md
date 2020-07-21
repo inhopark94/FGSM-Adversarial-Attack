@@ -15,11 +15,13 @@ conda install pytorch torchvision cudatoolkit=10.2 -c pytorch (pytorch hompage e
 * matplotlib : 
 conda install matplotlib
 
-you can write the code in the anaconda evironment directory where you download the file.
-and when you use a New_BlackBox.py code, need to change PATH_Result, PATH_Oracle to your directory.
+when you use a New_BlackBox.py code, need to change PATH_Result, PATH_Oracle to your directory.
 
 PATH_Result is a perturbed image download directory.
 PATH_Oracle contains both of oracle file directory and .pth file name.
+
+
+you can write the bottom code in the downloaded file directory at the anaconda evironment.
 
 
 python WhiteBox.py
